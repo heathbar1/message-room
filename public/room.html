@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chat Room - Messaging</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="chat-container">
+    <header class="chat-header">
+      <div class="chat-header-left">
+            <a href="index.html" class="back-btn">← Back</a>
+        <h1 class="room-title" id="roomTitle">Room</h1>
+      </div>
+      <div class="user-count" id="userCount">0 users</div>
+    </header>
+
+    <main class="chat-main">
+      <div class="messages" id="messages">
+        <div class="system-message">Welcome to the room</div>
+      </div>
+    </main>
+
+    <footer class="chat-footer">
+      <form class="message-form" id="messageForm">
+        <input 
+          type="text" 
+          id="messageInput" 
+          placeholder="Type a message..." 
+          autocomplete="off"
+          maxlength="500"
+        >
+        <button type="submit" class="send-btn">Send</button>
+      </form>
+    </footer>
+  </div>
+
+  <!-- Join Room Modal -->
+  <div class="modal" id="joinModal" style="display: flex;">
+    <div class="modal-content">
+      <h2>Join Room</h2>
+      <form id="joinForm">
+        <input 
+          type="text" 
+          id="joinUsername" 
+          placeholder="Enter your username" 
+          required 
+          maxlength="50"
+        >
+        
+        <input 
+          type="password" 
+          id="joinPassword" 
+          placeholder="Password (if private)" 
+        >
+
+        <button type="submit" class="btn-primary">Join</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+
+    // Get room ID from URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const roomId = urlParams.get('id');
+    let username = null;
+
+    if (!roomId) {
+      alert('Invalid room');
+      window.location.href = 'index.html';
+    }
+
+    // DOM elements
+    const messagesDiv = document.getElementById('messages');
+    const messageForm = document.getElementById('messageForm');
+    const messageInput = document.getElementById('messageInput');
+    const roomTitle = document.getElementById('roomTitle');
+    const userCount = document.getElementById('userCount');
+    const joinModal = document.getElementById('joinModal');
+    const joinForm = document.getElementById('joinForm');
+    const joinUsername = document.getElementById('joinUsername');
+    const joinPassword = document.getElementById('joinPassword');
+
+    // Handle join form submission
+    joinForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      username = joinUsername.value.trim();
+      const password = joinPassword.value || null;
+
+      if (!username) {
+        alert('Please enter a username');
+        return;
+      }
+
+      // Emit join-room event
+      socket.emit('join-room', { roomId, username, password });
+    });
+
+    // Handle join errors
+    socket.on('join-error', (error) => {
+      alert('Error: ' + error);
+      joinPassword.value = '';
+      joinUsername.focus();
+    });
+
+    // Handle successful join
+    socket.on('room-joined', (data) => {
+      roomTitle.textContent = data.roomName;
+      joinModal.style.display = 'none';
+      
+      // Display message history
+      messagesDiv.innerHTML = '<div class="system-message">Welcome to ' + escapeHtml(data.roomName) + '</div>';
+      data.messages.forEach(msg => displayMessage(msg));
+      
+      // Update user count
+      updateUserCount(data.users.length);
+      
+      // Scroll to bottom
+      scrollToBottom();
+      messageInput.focus();
+    });
+
+    // Send message
+    messageForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const message = messageInput.value.trim();
+      
+      if (message) {
+        socket.emit('send-message', { roomId, message });
+        messageInput.value = '';
+        messageInput.focus();
+      }
+    });
+
+    // Receive new message
+    socket.on('new-message', (data) => {
+      displayMessage(data);
+      scrollToBottom();
+    });
+
+    // User joined
+    socket.on('user-joined', (data) => {
+      const systemMsg = document.createElement('div');
+      systemMsg.className = 'system-message';
+      systemMsg.textContent = `${data.username} joined the room`;
+      messagesDiv.appendChild(systemMsg);
+      scrollToBottom();
+    });
+
+    // User left
+    socket.on('user-left', (data) => {
+      const systemMsg = document.createElement('div');
+      systemMsg.className = 'system-message';
+      systemMsg.textContent = `${data.username} left the room`;
+      messagesDiv.appendChild(systemMsg);
+      scrollToBottom();
+    });
+
+    // Update user count
+    socket.on('users-updated', (users) => {
+      updateUserCount(users.length);
+    });
+
+    // Display message function
+    function displayMessage(data) {
+      const messageDiv = document.createElement('div');
+      messageDiv.className = 'message';
+      
+      const isOwnMessage = data.username === username;
+      if (isOwnMessage) {
+        messageDiv.classList.add('own-message');
+      }
+
+      messageDiv.innerHTML = `
+        <div class="message-header">
+          <span class="message-author">${escapeHtml(data.username)}</span>
+          <span class="message-time">${data.timestamp}</span>
+        </div>
+        <div class="message-content">${escapeHtml(data.message)}</div>
+      `;
+
+      messagesDiv.appendChild(messageDiv);
+    }
+
+    // Update user count
+    function updateUserCount(count) {
+      userCount.textContent = `${count} ${count === 1 ? 'user' : 'users'}`;
+    }
+
+    // Scroll to bottom
+    function scrollToBottom() {
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+
+    // Escape HTML
+    function escapeHtml(text) {
+      const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+      };
+      return text.replace(/[&<>"']/g, m => map[m]);
+    }
+
+    // Handle connection errors
+    socket.on('connect_error', (error) => {
+      alert('Connection error. Please refresh the page.');
+    });
+  </script>
+</body>
+</html>

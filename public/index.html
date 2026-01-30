@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rooms - Messaging</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <h1 class="logo">Rooms</h1>
+      <button class="btn-create" id="showCreateForm">New Room</button>
+    </header>
+
+    <!-- Create Room Form (hidden by default) -->
+    <div class="modal" id="createModal" style="display: none;">
+      <div class="modal-content">
+        <button class="modal-close" id="closeModal">&times;</button>
+        <h2>Create Room</h2>
+        <form id="createRoomForm">
+          <input 
+            type="text" 
+            id="roomName" 
+            placeholder="Room name" 
+            required 
+            maxlength="50"
+          >
+          
+          <div class="radio-group">
+            <label class="radio-label">
+              <input type="radio" name="roomType" value="public" checked>
+              <span>Public</span>
+            </label>
+            <label class="radio-label">
+              <input type="radio" name="roomType" value="private">
+              <span>Private</span>
+            </label>
+          </div>
+
+          <input 
+            type="password" 
+            id="roomPassword" 
+            placeholder="Password (for private rooms)" 
+            disabled
+          >
+
+          <button type="submit" class="btn-primary">Create</button>
+        </form>
+      </div>
+    </div>
+
+    <!-- Rooms List -->
+    <main class="main">
+      <div class="rooms-header">
+        <h2>Available Rooms</h2>
+        <span class="room-count" id="roomCount">0 rooms</span>
+      </div>
+      
+      <div class="rooms-list" id="roomsList">
+        <div class="empty-state">
+          <p>No rooms yet. Create one to get started.</p>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="socket.io/socket.io.js"></script>
+  <script>
+    console.log('Script loaded');
+    const socket = io();
+
+    // Check socket connection
+    socket.on('connect', () => {
+      console.log('Connected to server');
+    });
+
+    socket.on('connect_error', (error) => {
+      console.error('Connection error:', error);
+      alert('Cannot connect to server. Make sure the server is running with "npm start"');
+    });
+
+    // DOM elements
+    const showCreateBtn = document.getElementById('showCreateForm');
+    const closeModalBtn = document.getElementById('closeModal');
+    const createModal = document.getElementById('createModal');
+    const createForm = document.getElementById('createRoomForm');
+    const roomsList = document.getElementById('roomsList');
+    const roomCount = document.getElementById('roomCount');
+    const roomNameInput = document.getElementById('roomName');
+    const roomPasswordInput = document.getElementById('roomPassword');
+    const radioButtons = document.querySelectorAll('input[name="roomType"]');
+
+    console.log('Button element:', showCreateBtn);
+
+    // Show/hide create modal
+    showCreateBtn.addEventListener('click', () => {
+      console.log('New Room button clicked');
+      createModal.style.display = 'flex';
+      console.log('Modal display set to flex');
+      roomNameInput.focus();
+    });
+
+    closeModalBtn.addEventListener('click', () => {
+      console.log('Close button clicked');
+      createModal.style.display = 'none';
+      createForm.reset();
+      roomPasswordInput.disabled = true;
+    });
+
+    // Enable/disable password field based on room type
+    radioButtons.forEach(radio => {
+      radio.addEventListener('change', (e) => {
+        console.log('Room type changed to:', e.target.value);
+        roomPasswordInput.disabled = e.target.value === 'public';
+        if (e.target.value === 'public') {
+          roomPasswordInput.value = '';
+        }
+      });
+    });
+
+    // Create room
+    createForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      console.log('Form submitted');
+      const name = roomNameInput.value.trim();
+      const isPrivate = document.querySelector('input[name="roomType"]:checked').value === 'private';
+      const password = isPrivate ? roomPasswordInput.value : null;
+
+      console.log('Creating room:', { name, isPrivate, hasPassword: !!password });
+
+      if (isPrivate && !password) {
+        alert('Please enter a password for private rooms');
+        return;
+      }
+
+      socket.emit('create-room', { name, isPrivate, password });
+    });
+
+    // Handle room created
+    socket.on('room-created', (data) => {
+      console.log('Room created successfully:', data);
+      createModal.style.display = 'none';
+      createForm.reset();
+      roomPasswordInput.disabled = true;
+      
+      // Redirect to room with roomId to join
+      window.location.href = `room.html?id=${data.roomId}`;
+    });
+
+    // Get rooms list on load
+    socket.emit('get-rooms');
+
+    // Display rooms
+    socket.on('rooms-list', (rooms) => {
+      if (rooms.length === 0) {
+        roomsList.innerHTML = '<div class="empty-state"><p>No rooms yet. Create one to get started.</p></div>';
+        roomCount.textContent = '0 rooms';
+        return;
+      }
+
+      roomCount.textContent = `${rooms.length} room${rooms.length !== 1 ? 's' : ''}`;
+      
+      roomsList.innerHTML = rooms.map(room => `
+        <div class="room-card" onclick="joinRoom('${room.id}', ${room.isPrivate})">
+          <div class="room-info">
+            <h3 class="room-name">${escapeHtml(room.name)}</h3>
+            <span class="room-users">${room.userCount} ${room.userCount === 1 ? 'user' : 'users'}</span>
+          </div>
+          <div class="room-meta">
+            ${room.isPrivate ? '<span class="room-badge">Private</span>' : '<span class="room-badge public">Public</span>'}
+          </div>
+        </div>
+      `).join('');
+    });
+
+    // Update rooms list
+    socket.on('rooms-updated', (rooms) => {
+      socket.emit('get-rooms');
+    });
+
+    // Join room function
+    function joinRoom(roomId, isPrivate) {
+      window.location.href = `room.html?id=${roomId}`;
+    }
+
+    // Utility function
+    function escapeHtml(text) {
+      const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+      };
+      return text.replace(/[&<>"']/g, m => map[m]);
+    }
+
+    // Close modal on outside click
+    createModal.addEventListener('click', (e) => {
+      if (e.target === createModal) {
+        createModal.style.display = 'none';
+        createForm.reset();
+        roomPasswordInput.disabled = true;
+      }
+    });
+  </script>
+</body>
+</html>
