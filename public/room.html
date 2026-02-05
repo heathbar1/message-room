@@ -10,11 +10,49 @@
   <div class="chat-container">
     <header class="chat-header">
       <div class="chat-header-left">
-            <a href="index.html" class="back-btn">← Back</a>
+        <a href="/" class="back-btn">← Back</a>
         <h1 class="room-title" id="roomTitle">Room</h1>
       </div>
-      <div class="user-count" id="userCount">0 users</div>
+      <div class="chat-header-right">
+        <div class="user-count" id="userCount">0 users</div>
+        <button class="btn-settings" id="showSettings">⚙️</button>
+      </div>
     </header>
+
+    <!-- Settings Modal -->
+    <div class="modal" id="settingsModal" style="display: none;">
+      <div class="modal-content">
+        <button class="modal-close" id="closeSettings">&times;</button>
+        <h2>Settings</h2>
+
+        <div class="settings-group">
+          <label class="settings-label">Theme</label>
+          <div class="radio-group">
+            <label class="radio-label">
+              <input type="radio" name="theme" value="light"> <span>Light</span>
+            </label>
+            <label class="radio-label">
+              <input type="radio" name="theme" value="dark"> <span>Dark</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="settings-group">
+          <label class="settings-label">Text Size</label>
+          <div class="radio-group">
+            <label class="radio-label">
+              <input type="radio" name="textSize" value="small"> <span>Small</span>
+            </label>
+            <label class="radio-label">
+              <input type="radio" name="textSize" value="medium"> <span>Medium</span>
+            </label>
+            <label class="radio-label">
+              <input type="radio" name="textSize" value="large"> <span>Large</span>
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <main class="chat-main">
       <div class="messages" id="messages">
@@ -36,42 +74,75 @@
     </footer>
   </div>
 
-  <!-- Join Room Modal -->
-  <div class="modal" id="joinModal" style="display: flex;">
-    <div class="modal-content">
-      <h2>Join Room</h2>
-      <form id="joinForm">
-        <input 
-          type="text" 
-          id="joinUsername" 
-          placeholder="Enter your username" 
-          required 
-          maxlength="50"
-        >
-        
-        <input 
-          type="password" 
-          id="joinPassword" 
-          placeholder="Password (if private)" 
-        >
-
-        <button type="submit" class="btn-primary">Join</button>
-      </form>
-    </div>
-  </div>
-
-  <script src="socket.io/socket.io.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
   <script>
     const socket = io();
 
-    // Get room ID from URL
+    // ========== SETTINGS LOGIC ==========
+    function loadSettings() {
+      return {
+        theme: localStorage.getItem('msg_theme') || 'light',
+        textSize: localStorage.getItem('msg_textSize') || 'medium'
+      };
+    }
+
+    function saveSettings(settings) {
+      localStorage.setItem('msg_theme', settings.theme);
+      localStorage.setItem('msg_textSize', settings.textSize);
+    }
+
+    function applySettings(settings) {
+      document.documentElement.setAttribute('data-theme', settings.theme);
+      document.documentElement.setAttribute('data-text-size', settings.textSize);
+
+      const themeRadio = document.querySelector(`input[name="theme"][value="${settings.theme}"]`);
+      if (themeRadio) themeRadio.checked = true;
+
+      const textSizeRadio = document.querySelector(`input[name="textSize"][value="${settings.textSize}"]`);
+      if (textSizeRadio) textSizeRadio.checked = true;
+    }
+
+    let currentSettings = loadSettings();
+    applySettings(currentSettings);
+
+    document.getElementById('showSettings').addEventListener('click', () => {
+      document.getElementById('settingsModal').style.display = 'flex';
+    });
+
+    document.getElementById('closeSettings').addEventListener('click', () => {
+      document.getElementById('settingsModal').style.display = 'none';
+    });
+
+    document.getElementById('settingsModal').addEventListener('click', (e) => {
+      if (e.target === document.getElementById('settingsModal')) {
+        document.getElementById('settingsModal').style.display = 'none';
+      }
+    });
+
+    document.querySelectorAll('input[name="theme"]').forEach(radio => {
+      radio.addEventListener('change', (e) => {
+        currentSettings.theme = e.target.value;
+        saveSettings(currentSettings);
+        applySettings(currentSettings);
+      });
+    });
+
+    document.querySelectorAll('input[name="textSize"]').forEach(radio => {
+      radio.addEventListener('change', (e) => {
+        currentSettings.textSize = e.target.value;
+        saveSettings(currentSettings);
+        applySettings(currentSettings);
+      });
+    });
+    // ========== END SETTINGS ==========
     const urlParams = new URLSearchParams(window.location.search);
     const roomId = urlParams.get('id');
-    let username = null;
+    const username = urlParams.get('username');
+    const password = urlParams.get('password');
 
-    if (!roomId) {
-      alert('Invalid room');
-      window.location.href = 'index.html';
+    if (!roomId || !username) {
+      alert('Invalid room or username');
+      window.location.href = '/';
     }
 
     // DOM elements
@@ -80,37 +151,19 @@
     const messageInput = document.getElementById('messageInput');
     const roomTitle = document.getElementById('roomTitle');
     const userCount = document.getElementById('userCount');
-    const joinModal = document.getElementById('joinModal');
-    const joinForm = document.getElementById('joinForm');
-    const joinUsername = document.getElementById('joinUsername');
-    const joinPassword = document.getElementById('joinPassword');
 
-    // Handle join form submission
-    joinForm.addEventListener('submit', (e) => {
-      e.preventDefault();
-      username = joinUsername.value.trim();
-      const password = joinPassword.value || null;
-
-      if (!username) {
-        alert('Please enter a username');
-        return;
-      }
-
-      // Emit join-room event
-      socket.emit('join-room', { roomId, username, password });
-    });
+    // Join room
+    socket.emit('join-room', { roomId, username, password });
 
     // Handle join errors
     socket.on('join-error', (error) => {
-      alert('Error: ' + error);
-      joinPassword.value = '';
-      joinUsername.focus();
+      alert(error);
+      window.location.href = '/';
     });
 
     // Handle successful join
     socket.on('room-joined', (data) => {
       roomTitle.textContent = data.roomName;
-      joinModal.style.display = 'none';
       
       // Display message history
       messagesDiv.innerHTML = '<div class="system-message">Welcome to ' + escapeHtml(data.roomName) + '</div>';

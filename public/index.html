@@ -10,8 +10,46 @@
   <div class="container">
     <header class="header">
       <h1 class="logo">Rooms</h1>
-      <button class="btn-create" id="showCreateForm">New Room</button>
+      <div class="header-buttons">
+        <button class="btn-settings" id="showSettings">⚙️ Settings</button>
+        <button class="btn-create" id="showCreateForm">New Room</button>
+      </div>
     </header>
+
+    <!-- Settings Modal -->
+    <div class="modal" id="settingsModal" style="display: none;">
+      <div class="modal-content">
+        <button class="modal-close" id="closeSettings">&times;</button>
+        <h2>Settings</h2>
+
+        <div class="settings-group">
+          <label class="settings-label">Theme</label>
+          <div class="radio-group">
+            <label class="radio-label" id="themeLight">
+              <input type="radio" name="theme" value="light"> <span>Light</span>
+            </label>
+            <label class="radio-label" id="themeDark">
+              <input type="radio" name="theme" value="dark"> <span>Dark</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="settings-group">
+          <label class="settings-label">Text Size</label>
+          <div class="radio-group">
+            <label class="radio-label">
+              <input type="radio" name="textSize" value="small"> <span>Small</span>
+            </label>
+            <label class="radio-label">
+              <input type="radio" name="textSize" value="medium"> <span>Medium</span>
+            </label>
+            <label class="radio-label">
+              <input type="radio" name="textSize" value="large"> <span>Large</span>
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <!-- Create Room Form (hidden by default) -->
     <div class="modal" id="createModal" style="display: none;">
@@ -65,10 +103,75 @@
     </main>
   </div>
 
-  <script src="socket.io/socket.io.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
   <script>
     console.log('Script loaded');
     const socket = io();
+
+    // ========== SETTINGS LOGIC ==========
+    function loadSettings() {
+      return {
+        theme: localStorage.getItem('msg_theme') || 'light',
+        textSize: localStorage.getItem('msg_textSize') || 'medium'
+      };
+    }
+
+    function saveSettings(settings) {
+      localStorage.setItem('msg_theme', settings.theme);
+      localStorage.setItem('msg_textSize', settings.textSize);
+    }
+
+    function applySettings(settings) {
+      // Apply theme
+      document.documentElement.setAttribute('data-theme', settings.theme);
+
+      // Apply text size
+      document.documentElement.setAttribute('data-text-size', settings.textSize);
+
+      // Sync radio buttons
+      const themeRadio = document.querySelector(`input[name="theme"][value="${settings.theme}"]`);
+      if (themeRadio) themeRadio.checked = true;
+
+      const textSizeRadio = document.querySelector(`input[name="textSize"][value="${settings.textSize}"]`);
+      if (textSizeRadio) textSizeRadio.checked = true;
+    }
+
+    // Load and apply on page start
+    let currentSettings = loadSettings();
+    applySettings(currentSettings);
+
+    // Settings modal open/close
+    document.getElementById('showSettings').addEventListener('click', () => {
+      document.getElementById('settingsModal').style.display = 'flex';
+    });
+
+    document.getElementById('closeSettings').addEventListener('click', () => {
+      document.getElementById('settingsModal').style.display = 'none';
+    });
+
+    document.getElementById('settingsModal').addEventListener('click', (e) => {
+      if (e.target === document.getElementById('settingsModal')) {
+        document.getElementById('settingsModal').style.display = 'none';
+      }
+    });
+
+    // Listen for settings changes live
+    document.querySelectorAll('input[name="theme"]').forEach(radio => {
+      radio.addEventListener('change', (e) => {
+        currentSettings.theme = e.target.value;
+        saveSettings(currentSettings);
+        applySettings(currentSettings);
+      });
+    });
+
+    document.querySelectorAll('input[name="textSize"]').forEach(radio => {
+      radio.addEventListener('change', (e) => {
+        currentSettings.textSize = e.target.value;
+        saveSettings(currentSettings);
+        applySettings(currentSettings);
+      });
+    });
+    // ========== END SETTINGS ==========
 
     // Check socket connection
     socket.on('connect', () => {
@@ -144,8 +247,11 @@
       createForm.reset();
       roomPasswordInput.disabled = true;
       
-      // Redirect to room with roomId to join
-      window.location.href = `room.html?id=${data.roomId}`;
+      // Prompt for username and join
+      const username = prompt('Enter your username:');
+      if (username) {
+        window.location.href = `/room.html?id=${data.roomId}&username=${encodeURIComponent(username)}`;
+      }
     });
 
     // Get rooms list on load
@@ -181,7 +287,16 @@
 
     // Join room function
     function joinRoom(roomId, isPrivate) {
-      window.location.href = `room.html?id=${roomId}`;
+      const username = prompt('Enter your username:');
+      if (!username) return;
+
+      let password = null;
+      if (isPrivate) {
+        password = prompt('Enter room password:');
+        if (!password) return;
+      }
+
+      window.location.href = `/room.html?id=${roomId}&username=${encodeURIComponent(username)}${password ? '&password=' + encodeURIComponent(password) : ''}`;
     }
 
     // Utility function

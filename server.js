@@ -3,6 +3,52 @@ const app = express();
 const http = require('http').createServer(app);
 const io = require('socket.io')(http);
 const path = require('path');
+const fs = require('fs');
+
+// ========== BAD WORD FILTER ==========
+const badWords = [
+  'damn', 'hell', 'ass', 'bastard', 'crap',
+  'shit', 'fuck', 'dick', 'bitch', 'slut',
+  'whore', 'cunt', 'nigger', 'faggot', 'retard',
+  'idiot', 'loser', 'stupid', 'moron', 'dumbass'
+];
+
+function filterMessage(message) {
+  let filtered = message;
+  badWords.forEach(word => {
+    const regex = new RegExp(`\\b${word}\\b`, 'gi');
+    filtered = filtered.replace(regex, '###');
+  });
+  return filtered;
+}
+
+// ========== FILE-BASED MESSAGE STORAGE ==========
+const MESSAGES_FILE = path.join(__dirname, 'messages.json');
+
+// Load messages from file on startup
+function loadMessages() {
+  try {
+    if (fs.existsSync(MESSAGES_FILE)) {
+      const data = fs.readFileSync(MESSAGES_FILE, 'utf8');
+      return JSON.parse(data);
+    }
+  } catch (err) {
+    console.error('Error loading messages:', err);
+  }
+  return {};
+}
+
+// Save all messages to file
+function saveMessages(allMessages) {
+  try {
+    fs.writeFileSync(MESSAGES_FILE, JSON.stringify(allMessages, null, 2));
+  } catch (err) {
+    console.error('Error saving messages:', err);
+  }
+}
+
+// Persistent message store (keyed by roomId)
+let savedMessages = loadMessages();
 
 // In-memory storage
 const rooms = {};
@@ -21,7 +67,7 @@ io.on('connection', (socket) => {
       name: data.name,
       isPrivate: data.isPrivate,
       password: data.password || null,
-      messages: [],
+      messages: savedMessages[roomId] || [],
       users: []
     };
     socket.emit('room-created', { roomId, room: rooms[roomId] });
@@ -80,18 +126,22 @@ io.on('connection', (socket) => {
 
     if (!room) return;
 
+    // Filter bad words before storing
+    const filteredMessage = filterMessage(message);
+
     const messageData = {
       id: Date.now(),
       username: socket.username,
-      message,
+      message: filteredMessage,
       timestamp: new Date().toLocaleTimeString()
     };
 
-    // Store message and keep only last 100
+    // Store message in memory
     room.messages.push(messageData);
-    if (room.messages.length > 100) {
-      room.messages.shift();
-    }
+
+    // Save messages to file
+    savedMessages[roomId] = room.messages;
+    saveMessages(savedMessages);
 
     // Broadcast to all users in the room
     io.to(roomId).emit('new-message', messageData);
