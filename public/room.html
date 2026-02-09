@@ -54,13 +54,23 @@
       </div>
     </div>
 
-    <main class="chat-main">
-      <div class="messages" id="messages">
-        <div class="system-message">Welcome to the room</div>
-      </div>
-    </main>
+    <div class="chat-body">
+      <main class="chat-main">
+        <div class="messages" id="messages">
+          <div class="system-message">Welcome to the room</div>
+        </div>
+      </main>
+      <aside class="invites-sidebar" id="invitesSidebar">
+        <h3 class="invites-sidebar-title">Game invites</h3>
+        <div class="invites-list" id="invitesList"></div>
+      </aside>
+    </div>
 
     <footer class="chat-footer">
+      <div class="footer-actions">
+        <button type="button" class="btn-tools" id="showTools" title="Tools">Tools</button>
+        <button type="button" class="btn-tools" id="showGames" title="Games">Games</button>
+      </div>
       <form class="message-form" id="messageForm">
         <input 
           type="text" 
@@ -72,6 +82,97 @@
         <button type="submit" class="send-btn">Send</button>
       </form>
     </footer>
+
+    <!-- Tools & Games Modal -->
+    <div class="modal" id="toolsGamesModal" style="display: none;">
+      <div class="modal-content modal-content-wide">
+        <button class="modal-close" id="closeToolsGames">&times;</button>
+        <div class="tools-games-tabs">
+          <button type="button" class="tab-btn active" data-tab="tools">Tools</button>
+          <button type="button" class="tab-btn" data-tab="games">Games</button>
+        </div>
+        <div id="toolsPanel" class="tools-panel">
+          <section class="tool-section">
+            <h3 class="tool-title">Dice Roller</h3>
+            <div class="tool-row">
+              <label>Quantity</label>
+              <input type="number" id="diceCount" min="1" max="20" value="1" class="tool-input-narrow">
+              <label>Die</label>
+              <select id="diceType">
+                <option value="4">d4</option>
+                <option value="6" selected>d6</option>
+                <option value="8">d8</option>
+                <option value="10">d10</option>
+                <option value="12">d12</option>
+                <option value="20">d20</option>
+              </select>
+              <button type="button" class="btn-small" id="rollDice">Roll</button>
+            </div>
+            <div id="diceResult" class="tool-result"></div>
+          </section>
+          <section class="tool-section">
+            <h3 class="tool-title">Coin Flip</h3>
+            <button type="button" class="btn-small" id="flipCoin">Flip</button>
+            <div id="coinResult" class="tool-result"></div>
+            <button type="button" class="btn-small btn-send-tool" id="sendCoinToChat" style="display: none;">Send to chat</button>
+          </section>
+          <section class="tool-section">
+            <h3 class="tool-title">Random Words</h3>
+            <div class="tool-row">
+              <label>Number of words</label>
+              <input type="number" id="wordCount" min="1" max="20" value="5" class="tool-input-narrow">
+              <button type="button" class="btn-small" id="genWords">Generate</button>
+            </div>
+            <div id="wordsResult" class="tool-result"></div>
+            <button type="button" class="btn-small btn-send-tool" id="sendWordsToChat" style="display: none;">Send to chat</button>
+          </section>
+        </div>
+        <div id="gamesPanel" class="games-panel" style="display: none;">
+          <section class="tool-section">
+            <h3 class="tool-title">Snake</h3>
+            <p class="tool-desc">Start a game and invite the room. Everyone can join as a snake.</p>
+            <button type="button" class="btn-small" id="startSnake">Start game &amp; send invite</button>
+          </section>
+          <section class="tool-section">
+            <h3 class="tool-title">Rock Paper Scissors</h3>
+            <p class="tool-desc">Challenge someone in the room to a round.</p>
+            <button type="button" class="btn-small" id="sendRpsChallenge">Send challenge</button>
+          </section>
+        </div>
+      </div>
+    </div>
+
+    <!-- Snake game modal -->
+    <div class="modal" id="snakeModal" style="display: none;">
+      <div class="modal-content">
+        <button class="modal-close" id="closeSnakeModal">&times;</button>
+        <h2>Snake</h2>
+        <p id="snakeStatus" class="tool-desc">Use arrow keys or WASD to move. Don't hit walls or other snakes.</p>
+        <canvas id="snakeCanvas" tabindex="0" style="display: block; margin: 0 auto; border: 1px solid var(--border);"></canvas>
+      </div>
+    </div>
+
+    <!-- RPS choose modal -->
+    <div class="modal" id="rpsModal" style="display: none;">
+      <div class="modal-content">
+        <button class="modal-close" id="closeRpsModal">&times;</button>
+        <h2>Rock Paper Scissors</h2>
+        <p class="tool-desc">Choose:</p>
+        <div class="tool-row">
+          <button type="button" class="btn-small" id="rpsRock">Rock</button>
+          <button type="button" class="btn-small" id="rpsPaper">Paper</button>
+          <button type="button" class="btn-small" id="rpsScissors">Scissors</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- RPS result modal -->
+    <div class="modal" id="rpsResultModal" style="display: none;">
+      <div class="modal-content">
+        <h2>Result</h2>
+        <p id="rpsResultText" class="tool-result"></p>
+      </div>
+    </div>
   </div>
 
   <script src="/socket.io/socket.io.js"></script>
@@ -164,15 +265,10 @@
     // Handle successful join
     socket.on('room-joined', (data) => {
       roomTitle.textContent = data.roomName;
-      
-      // Display message history
       messagesDiv.innerHTML = '<div class="system-message">Welcome to ' + escapeHtml(data.roomName) + '</div>';
       data.messages.forEach(msg => displayMessage(msg));
-      
-      // Update user count
       updateUserCount(data.users.length);
-      
-      // Scroll to bottom
+      renderInvitesSidebar(data.gameInvites || []);
       scrollToBottom();
       messageInput.focus();
     });
@@ -187,6 +283,15 @@
         messageInput.value = '';
         messageInput.focus();
       }
+    });
+
+    socket.on('message-rejected', (data) => {
+      const msg = data.reason || 'Message blocked by moderation';
+      const el = document.createElement('div');
+      el.className = 'system-message';
+      el.textContent = msg;
+      messagesDiv.appendChild(el);
+      scrollToBottom();
     });
 
     // Receive new message
@@ -218,14 +323,24 @@
       updateUserCount(users.length);
     });
 
-    // Display message function
+    // Display message function (supports [Snake] GAME_ID:xxx and [RPS] CHALLENGE_ID:xxx)
     function displayMessage(data) {
       const messageDiv = document.createElement('div');
       messageDiv.className = 'message';
-      
       const isOwnMessage = data.username === username;
-      if (isOwnMessage) {
-        messageDiv.classList.add('own-message');
+      if (isOwnMessage) messageDiv.classList.add('own-message');
+
+      let content = escapeHtml(data.message);
+      const snakeMatch = data.message.match(/^\[Snake\] GAME_ID:([a-z0-9-]+) started by (.+)$/);
+      const rpsMatch = data.message.match(/^\[RPS\] CHALLENGE_ID:(rps-\d+) (.+) challenges the room to Rock Paper Scissors$/);
+      if (snakeMatch) {
+        const gameId = snakeMatch[1];
+        const startedBy = escapeHtml(snakeMatch[2]);
+        content = `<span class="game-invite" data-game-id="${escapeHtml(gameId)}" data-type="snake">Join Snake – started by ${startedBy}</span>`;
+      } else if (rpsMatch) {
+        const challengeId = rpsMatch[1];
+        const challenger = escapeHtml(rpsMatch[2]);
+        content = `<span class="game-invite" data-challenge-id="${escapeHtml(challengeId)}" data-type="rps">${challenger} challenges to RPS. <button type="button" class="btn-inline-accept" data-challenge-id="${escapeHtml(challengeId)}">Accept</button></span>`;
       }
 
       messageDiv.innerHTML = `
@@ -233,16 +348,60 @@
           <span class="message-author">${escapeHtml(data.username)}</span>
           <span class="message-time">${data.timestamp}</span>
         </div>
-        <div class="message-content">${escapeHtml(data.message)}</div>
+        <div class="message-content">${content}</div>
       `;
 
       messagesDiv.appendChild(messageDiv);
+      const snakeInv = messageDiv.querySelector('[data-type="snake"]');
+      if (snakeInv) snakeInv.addEventListener('click', () => openSnakeGame(snakeInv.dataset.gameId));
+      messageDiv.querySelectorAll('.btn-inline-accept').forEach(btn => {
+        btn.addEventListener('click', (e) => { e.stopPropagation(); socket.emit('rps-accept', { challengeId: btn.dataset.challengeId }); });
+      });
     }
 
-    // Update user count
     function updateUserCount(count) {
       userCount.textContent = `${count} ${count === 1 ? 'user' : 'users'}`;
     }
+
+    let gameInvitesList = [];
+    function renderInvitesSidebar(invites) {
+      gameInvitesList = invites;
+      const listEl = document.getElementById('invitesList');
+      listEl.innerHTML = invites.length === 0
+        ? '<p class="invites-empty">No active invites</p>'
+        : invites.map(inv => {
+            const isCreator = inv.creatorUsername === username;
+            const label = inv.type === 'snake' ? 'Snake' : 'Rock Paper Scissors';
+            return `<div class="invite-card" data-invite-id="${escapeHtml(inv.inviteId)}">
+              <div class="invite-label">${escapeHtml(label)}</div>
+              <div class="invite-by">by ${escapeHtml(inv.creatorUsername)}</div>
+              <div class="invite-actions">
+                ${!isCreator ? `<button type="button" class="btn-invite-join" data-invite-id="${escapeHtml(inv.inviteId)}" data-type="${escapeHtml(inv.type)}">Join</button>` : ''}
+                ${isCreator ? `<button type="button" class="btn-invite-delete" data-invite-id="${escapeHtml(inv.inviteId)}">Delete</button>` : ''}
+              </div>
+            </div>`;
+          }).join('');
+      listEl.querySelectorAll('.btn-invite-join').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const id = btn.dataset.inviteId;
+          const type = btn.dataset.type;
+          if (type === 'snake') { openSnakeGame(id); socket.emit('snake-join', { gameId: id }); }
+          else socket.emit('rps-accept', { challengeId: id });
+        });
+      });
+      listEl.querySelectorAll('.btn-invite-delete').forEach(btn => {
+        btn.addEventListener('click', () => socket.emit('game-invite-cancel', { inviteId: btn.dataset.inviteId }));
+      });
+    }
+    socket.on('game-invite-new', (data) => {
+      gameInvitesList = gameInvitesList.filter(inv => inv.inviteId !== data.inviteId);
+      gameInvitesList.push({ inviteId: data.inviteId, type: data.type, creatorUsername: data.creatorUsername });
+      renderInvitesSidebar(gameInvitesList);
+    });
+    socket.on('game-invite-removed', (data) => {
+      gameInvitesList = gameInvitesList.filter(inv => inv.inviteId !== data.inviteId);
+      renderInvitesSidebar(gameInvitesList);
+    });
 
     // Scroll to bottom
     function scrollToBottom() {
@@ -265,6 +424,179 @@
     socket.on('connect_error', (error) => {
       alert('Connection error. Please refresh the page.');
     });
+
+    // ========== TOOLS & GAMES MODAL ==========
+    const toolsGamesModal = document.getElementById('toolsGamesModal');
+    const closeToolsGamesBtn = document.getElementById('closeToolsGames');
+    const toolsPanel = document.getElementById('toolsPanel');
+    const gamesPanel = document.getElementById('gamesPanel');
+    const tabBtns = document.querySelectorAll('.tab-btn');
+
+    document.getElementById('showTools').addEventListener('click', () => {
+      toolsGamesModal.style.display = 'flex';
+      toolsPanel.style.display = 'block';
+      gamesPanel.style.display = 'none';
+      tabBtns.forEach(b => { b.classList.toggle('active', b.dataset.tab === 'tools'); });
+    });
+    document.getElementById('showGames').addEventListener('click', () => {
+      toolsGamesModal.style.display = 'flex';
+      toolsPanel.style.display = 'none';
+      gamesPanel.style.display = 'block';
+      tabBtns.forEach(b => { b.classList.toggle('active', b.dataset.tab === 'games'); });
+    });
+    tabBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tab = btn.dataset.tab;
+        toolsPanel.style.display = tab === 'tools' ? 'block' : 'none';
+        gamesPanel.style.display = tab === 'games' ? 'block' : 'none';
+        tabBtns.forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+      });
+    });
+    closeToolsGamesBtn.addEventListener('click', () => { toolsGamesModal.style.display = 'none'; });
+    toolsGamesModal.addEventListener('click', (e) => { if (e.target === toolsGamesModal) toolsGamesModal.style.display = 'none'; });
+
+    // ----- Dice (auto-send to chat on roll so result can't be faked) -----
+    document.getElementById('rollDice').addEventListener('click', () => {
+      const count = Math.max(1, Math.min(20, parseInt(document.getElementById('diceCount').value, 10) || 1));
+      const sides = parseInt(document.getElementById('diceType').value, 10);
+      const rolls = [];
+      for (let i = 0; i < count; i++) rolls.push(1 + Math.floor(Math.random() * sides));
+      const sum = rolls.reduce((a, b) => a + b, 0);
+      const rollStr = count === 1 ? String(rolls[0]) : rolls.join(', ') + ' \u2192 ' + sum;
+      const diceText = count === 1 ? `${username} rolled d${sides}: ${rolls[0]}` : `${username} rolled ${count}d${sides}: ${rolls.join(', ')} \u2192 ${sum}`;
+      document.getElementById('diceResult').textContent = rollStr;
+      socket.emit('send-message', { roomId, message: '[Dice] ' + diceText });
+    });
+
+    // ----- Coin -----
+    let lastCoinText = '';
+    document.getElementById('flipCoin').addEventListener('click', () => {
+      const result = Math.random() < 0.5 ? 'Heads' : 'Tails';
+      lastCoinText = `${username} flipped: ${result}`;
+      document.getElementById('coinResult').textContent = result;
+      document.getElementById('sendCoinToChat').style.display = 'inline-block';
+    });
+    document.getElementById('sendCoinToChat').addEventListener('click', () => {
+      if (!lastCoinText) return;
+      socket.emit('send-message', { roomId, message: '[Coin] ' + lastCoinText });
+      document.getElementById('sendCoinToChat').style.display = 'none';
+    });
+
+    // ----- Random words -----
+    const WORD_LIST = ['apple','boat','cloud','door','eagle','forest','grape','house','ice','jungle','kite','lake','moon','night','ocean','pear','queen','river','sun','tree','umbrella','valley','water','xray','yellow','zebra','anchor','bridge','castle','dragon','engine','flame','garden','hammer','island','jacket','knight','ladder','mountain','needle','orange','puzzle','quilt','rocket','shield','tiger','unicorn','violet','window','yacht','zeppelin','berry','coral','delta','ember','frost','globe','honey','ivory','jewel','koala','lily','maple','nova','oasis','prism','quartz','raven','storm','tulip','urban','vault','wheat','xenon','yearly','zesty','alpha','brave','crisp','dusk','echo','flint','grace','haven','index','jolly','keen','lunar','mint','noble','opal','pure','quest','rust','sage','thorn','ultra','vivid','warm','xeric','young','zenith'];
+    let lastWordsText = '';
+    document.getElementById('genWords').addEventListener('click', () => {
+      const n = Math.max(1, Math.min(20, parseInt(document.getElementById('wordCount').value, 10) || 5));
+      const shuffled = [...WORD_LIST].sort(() => Math.random() - 0.5);
+      const words = shuffled.slice(0, n);
+      lastWordsText = `${username}: ${words.join(', ')}`;
+      document.getElementById('wordsResult').textContent = words.join(', ');
+      document.getElementById('sendWordsToChat').style.display = 'inline-block';
+    });
+    document.getElementById('sendWordsToChat').addEventListener('click', () => {
+      if (!lastWordsText) return;
+      socket.emit('send-message', { roomId, message: '[Words] ' + lastWordsText });
+      document.getElementById('sendWordsToChat').style.display = 'none';
+    });
+
+    // ----- Snake game popup -----
+    let currentSnakeGameId = null;
+    let snakeState = null;
+    const SNAKE_CELL = 14;
+    const SNAKE_COLORS = ['#22c55e','#3b82f6','#f59e0b','#ef4444','#8b5cf6','#ec4899'];
+
+    function openSnakeGame(gameId) {
+      currentSnakeGameId = gameId;
+      socket.emit('snake-join', { gameId });
+      document.getElementById('snakeModal').style.display = 'flex';
+      document.getElementById('snakeCanvas').focus();
+    }
+
+    socket.on('snake-created', (data) => {
+      currentSnakeGameId = data.gameId;
+      document.getElementById('snakeModal').style.display = 'flex';
+      document.getElementById('snakeCanvas').focus();
+    });
+
+    socket.on('snake-joined', (data) => { currentSnakeGameId = data.gameId; });
+
+    socket.on('snake-state', (data) => {
+      if (data.gameId !== currentSnakeGameId) return;
+      snakeState = data;
+    });
+
+    socket.on('snake-game-over', (data) => {
+      if (data.gameId !== currentSnakeGameId) return;
+      document.getElementById('snakeStatus').textContent = data.winner ? data.winner + ' wins!' : 'Game over.';
+      setTimeout(() => {
+        document.getElementById('snakeModal').style.display = 'none';
+        currentSnakeGameId = null;
+      }, 2500);
+    });
+
+    const snakeCanvas = document.getElementById('snakeCanvas');
+    const snakeCtx = snakeCanvas.getContext('2d');
+    function drawSnake() {
+      if (!snakeState || !currentSnakeGameId) return;
+      const g = snakeState.gridSize || 20;
+      snakeCanvas.width = g * SNAKE_CELL;
+      snakeCanvas.height = g * SNAKE_CELL;
+      snakeCtx.fillStyle = '#1a1a1a';
+      snakeCtx.fillRect(0, 0, snakeCanvas.width, snakeCanvas.height);
+      const sidList = Object.keys(snakeState.snakes);
+      snakeState.food && (snakeCtx.fillStyle = '#fbbf24', snakeCtx.fillRect(snakeState.food[0] * SNAKE_CELL + 1, snakeState.food[1] * SNAKE_CELL + 1, SNAKE_CELL - 2, SNAKE_CELL - 2));
+      sidList.forEach((sid, i) => {
+        const s = snakeState.snakes[sid];
+        snakeCtx.fillStyle = SNAKE_COLORS[i % SNAKE_COLORS.length];
+        s.segments.forEach(([x, y]) => snakeCtx.fillRect(x * SNAKE_CELL + 1, y * SNAKE_CELL + 1, SNAKE_CELL - 2, SNAKE_CELL - 2));
+      });
+      requestAnimationFrame(drawSnake);
+    }
+    drawSnake();
+
+    snakeCanvas.addEventListener('keydown', (e) => {
+      if (!currentSnakeGameId) return;
+      const key = e.key;
+      let dir = null;
+      if (key === 'ArrowUp' || key === 'w' || key === 'W') dir = 'up';
+      if (key === 'ArrowDown' || key === 's' || key === 'S') dir = 'down';
+      if (key === 'ArrowLeft' || key === 'a' || key === 'A') dir = 'left';
+      if (key === 'ArrowRight' || key === 'd' || key === 'D') dir = 'right';
+      if (dir) { e.preventDefault(); socket.emit('snake-move', { gameId: currentSnakeGameId, direction: dir }); }
+    });
+
+    document.getElementById('closeSnakeModal').addEventListener('click', () => {
+      document.getElementById('snakeModal').style.display = 'none';
+      currentSnakeGameId = null;
+    });
+
+    // ----- RPS -----
+    socket.on('rps-choose', (data) => {
+      window.currentRpsChallengeId = data.challengeId;
+      document.getElementById('rpsModal').style.display = 'flex';
+    });
+    socket.on('rps-result', (data) => {
+      const msg = data.winner
+        ? `${data.challenger}: ${data.challengerChoice}, ${data.acceptor}: ${data.acceptorChoice} – ${data.winner} wins!`
+        : `${data.challenger}: ${data.challengerChoice}, ${data.acceptor}: ${data.acceptorChoice} – Draw!`;
+      document.getElementById('rpsResultText').textContent = msg;
+      document.getElementById('rpsResultModal').style.display = 'flex';
+      setTimeout(() => { document.getElementById('rpsResultModal').style.display = 'none'; }, 4000);
+    });
+    ['rock','paper','scissors'].forEach(choice => {
+      document.getElementById('rps' + choice.charAt(0).toUpperCase() + choice.slice(1)).addEventListener('click', () => {
+        if (window.currentRpsChallengeId) socket.emit('rps-choice', { challengeId: window.currentRpsChallengeId, choice });
+        document.getElementById('rpsModal').style.display = 'none';
+        window.currentRpsChallengeId = null;
+      });
+    });
+    document.getElementById('closeRpsModal').addEventListener('click', () => {
+      document.getElementById('rpsModal').style.display = 'none';
+      window.currentRpsChallengeId = null;
+    });
+
+    document.getElementById('startSnake').addEventListener('click', () => socket.emit('snake-create', { roomId }));
+    document.getElementById('sendRpsChallenge').addEventListener('click', () => socket.emit('rps-challenge', { roomId }));
   </script>
 </body>
 </html>

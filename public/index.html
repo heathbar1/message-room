@@ -51,6 +51,23 @@
       </div>
     </div>
 
+    <!-- Join Room Modal -->
+    <div class="modal" id="joinModal" style="display: none;">
+      <div class="modal-content">
+        <button class="modal-close" id="closeJoinModal">&times;</button>
+        <h2>Join Room</h2>
+        <form id="joinRoomForm">
+          <label class="settings-label" for="joinUsername">Username</label>
+          <input type="text" id="joinUsername" placeholder="Your username" required maxlength="50" autocomplete="username">
+          <div class="settings-group" id="joinPasswordGroup" style="display: none;">
+            <label class="settings-label" for="joinPassword">Password (for private rooms)</label>
+            <input type="password" id="joinPassword" placeholder="Room password" autocomplete="current-password">
+          </div>
+          <button type="submit" class="btn-primary">Join</button>
+        </form>
+      </div>
+    </div>
+
     <!-- Create Room Form (hidden by default) -->
     <div class="modal" id="createModal" style="display: none;">
       <div class="modal-content">
@@ -194,6 +211,15 @@
     const roomPasswordInput = document.getElementById('roomPassword');
     const radioButtons = document.querySelectorAll('input[name="roomType"]');
 
+    const joinModal = document.getElementById('joinModal');
+    const closeJoinModalBtn = document.getElementById('closeJoinModal');
+    const joinRoomForm = document.getElementById('joinRoomForm');
+    const joinModalUsernameInput = document.getElementById('joinUsername');
+    const joinModalPasswordInput = document.getElementById('joinPassword');
+    const joinModalPasswordGroup = document.getElementById('joinPasswordGroup');
+    let joinModalRoomId = null;
+    let joinModalIsPrivate = false;
+
     console.log('Button element:', showCreateBtn);
 
     // Show/hide create modal
@@ -222,6 +248,9 @@
       });
     });
 
+    // Store password for redirect after creating private room (callback doesn't receive it)
+    let pendingCreatePassword = null;
+
     // Create room
     createForm.addEventListener('submit', (e) => {
       e.preventDefault();
@@ -229,6 +258,7 @@
       const name = roomNameInput.value.trim();
       const isPrivate = document.querySelector('input[name="roomType"]:checked').value === 'private';
       const password = isPrivate ? roomPasswordInput.value : null;
+      pendingCreatePassword = password;
 
       console.log('Creating room:', { name, isPrivate, hasPassword: !!password });
 
@@ -246,12 +276,18 @@
       createModal.style.display = 'none';
       createForm.reset();
       roomPasswordInput.disabled = true;
-      
-      // Prompt for username and join
-      const username = prompt('Enter your username:');
-      if (username) {
-        window.location.href = `/room.html?id=${data.roomId}&username=${encodeURIComponent(username)}`;
-      }
+      const isPrivate = data.room && data.room.isPrivate;
+      const password = isPrivate ? pendingCreatePassword : null;
+      pendingCreatePassword = null;
+
+      // Show join modal for username (and pre-fill password for private)
+      joinModalRoomId = data.roomId;
+      joinModalIsPrivate = isPrivate;
+      joinModalPasswordInput.value = password || '';
+      joinModalPasswordGroup.style.display = isPrivate ? 'block' : 'none';
+      joinModalUsernameInput.value = '';
+      joinModalUsernameInput.focus();
+      joinModal.style.display = 'flex';
     });
 
     // Get rooms list on load
@@ -285,19 +321,36 @@
       socket.emit('get-rooms');
     });
 
-    // Join room function
+    // Join room: show modal with labeled fields
     function joinRoom(roomId, isPrivate) {
-      const username = prompt('Enter your username:');
-      if (!username) return;
-
-      let password = null;
-      if (isPrivate) {
-        password = prompt('Enter room password:');
-        if (!password) return;
-      }
-
-      window.location.href = `/room.html?id=${roomId}&username=${encodeURIComponent(username)}${password ? '&password=' + encodeURIComponent(password) : ''}`;
+      joinModalRoomId = roomId;
+      joinModalIsPrivate = isPrivate;
+      joinModalPasswordGroup.style.display = isPrivate ? 'block' : 'none';
+      joinModalUsernameInput.value = '';
+      joinModalPasswordInput.value = '';
+      joinModalUsernameInput.focus();
+      joinModal.style.display = 'flex';
     }
+
+    closeJoinModalBtn.addEventListener('click', () => {
+      joinModal.style.display = 'none';
+    });
+    joinModal.addEventListener('click', (e) => {
+      if (e.target === joinModal) joinModal.style.display = 'none';
+    });
+
+    joinRoomForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const username = joinModalUsernameInput.value.trim();
+      if (!username) return;
+      if (joinModalIsPrivate && !joinModalPasswordInput.value) {
+        alert('Please enter the room password');
+        return;
+      }
+      const password = joinModalIsPrivate ? joinModalPasswordInput.value : '';
+      joinModal.style.display = 'none';
+      window.location.href = `/room.html?id=${joinModalRoomId}&username=${encodeURIComponent(username)}${password ? '&password=' + encodeURIComponent(password) : ''}`;
+    });
 
     // Utility function
     function escapeHtml(text) {

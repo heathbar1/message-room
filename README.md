@@ -80,12 +80,9 @@ messaging-website/
 ⚠️ **Data Persistence**: All rooms and messages are stored in memory. When you restart the server, all data will be lost. This is intentional for simplicity. To add persistence, you would need to implement a database.
 
 🔒 **Security**: This is a basic implementation for learning purposes. For production use, you should add:
-- User authentication
-- Password hashing
-- Rate limiting
-- Input sanitization
-- HTTPS
-- Database persistence
+- **HTTPS (TLS)**: Run the app behind a reverse proxy (e.g. nginx, Caddy) with Let's Encrypt so all traffic (including Socket.io and query params) is encrypted in transit.
+- Optional **at-rest encryption** for stored messages: set `MESSAGE_ENCRYPTION_KEY` (32-byte hex string) in the environment to encrypt `messages.json` on disk (see server.js).
+- User authentication, password hashing, rate limiting, input sanitization, and database persistence as needed.
 
 ## Customization
 
